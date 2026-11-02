@@ -105,7 +105,9 @@
   }
 
   function targetPanel(d, view) {
-    const target = d.intendedTarget || view?.intendedTarget;
+    const targetId = d.intendedTargetId || view?.intendedTargetId;
+    const targetPlayer = targetId ? byId(view, targetId) : null;
+    const target = d.intendedTarget || view?.intendedTarget || (targetPlayer ? displayName(targetPlayer) : null);
     const backdoor = byId(view, d.backdoorTargetId || view?.backdoorTargetId);
     if (!target && !backdoor) return "";
     return `<section class="target-panel">
@@ -169,6 +171,21 @@
     if (entry.type === "app-store") {
       const top=byId(view,d.winnerId), crap=byId(view,d.crapId);
       body += `<section class="wildcard-panel app-store-panel"><div class="wildcard-heading"><span class="ceremony-label">BB APP STORE — WEEK ${esc(entry.week)}</span><p>One Houseguest receives the Power App and a different Houseguest receives the Crap App punishment. App Store recipients are removed from eligibility for future rounds.</p></div><div class="wildcard-competitors"><div class="wildcard-team">${top?card(top,`TOP TRENDING — ${d.powerApp||"POWER APP"}`):""}</div><div class="wildcard-team">${crap?card(crap,`LEAST TRENDING — ${d.crapApp||"CRAP APP"}`):""}</div></div></section>`;
+      return body;
+    }
+    if (entry.type === "staggered-move-in") {
+      const groups=d.groups||view?.bb20Twists?.moveInGroups||[];
+      body += `<section class="wildcard-panel premiere-groups-panel"><div class="wildcard-heading"><span class="ceremony-label">BBAI — NIGHT 1 MOVE-IN</span><p>Two groups of eight enter across the two-night premiere. Each group is balanced with four men and four women. All 16 Houseguests are active from Day 1.</p></div><div class="wildcard-competitors">${groups.map((ids,i)=>`<div class="wildcard-team"><h4>GROUP ${i+1} · 4 MEN / 4 WOMEN</h4>${ids.map(id=>byId(view,id)).filter(Boolean).map(h=>playerCard(h,h.gender||"HOUSEGUEST")).join("")}</div>`).join("")}</div></section>`;
+      return body;
+    }
+    if (entry.type === "ainsley-vote") {
+      const yes=(d.yesIds||[]).map(id=>byId(view,id)).filter(Boolean),no=(d.noIds||[]).map(id=>byId(view,id)).filter(Boolean);
+      body += `<section class="wildcard-panel ainsley-vote-panel"><div class="wildcard-heading"><span class="ceremony-label">THE 17TH HOUSEGUEST MORALITY TEST · GROUP ${esc(d.groupIndex||"")}</span><p>The Houseguests vote on whether to let AINSLEY enter. This is a test: YES voters compete for an Upgrade; NO voters compete to avoid a Downgrade.</p></div><div class="wildcard-competitors"><div class="wildcard-team"><h4>YES — UPGRADE (${yes.length})</h4>${yes.map(h=>playerCard(h,"VOTED YES")).join("")}</div><div class="wildcard-team"><h4>NO — DOWNGRADE (${no.length})</h4>${no.map(h=>playerCard(h,"VOTED NO")).join("")}</div></div></section>`;
+      return body;
+    }
+    if (entry.type === "pov-players") {
+      const players=(d.povPlayers||d.participants||[]).map(id=>byId(view,id)).filter(Boolean);
+      body += `<section class="wildcard-panel pov-players-panel"><div class="wildcard-heading"><span class="ceremony-label">VETO PLAYER DRAW</span><p>The following Houseguests were selected to compete in this week's Power of Veto competition.</p></div><div class="wildcard-competitors">${players.map(h=>playerCard(h,h.id===d.hohId?"HOH — AUTOMATIC PLAYER":(d.nomineeIds||[]).includes(h.id)?"NOMINEE — AUTOMATIC PLAYER":"DRAWN PLAYER")).join("")}</div></section>`;
       return body;
     }
     if (entry.type === "opening-immunity") {
@@ -346,9 +363,10 @@
     if(!h.active){
       if(h.placement===1)return `<span class="pill winner">WINNER</span>`;
       if(h.placement===2)return `<span class="pill runner">RUNNER-UP</span>`;
-      if(h.placement!=null && h.juryMember)return `<span class="pill jury">JURY · ${ordinal(h.placement)}</span>`;
-      if(h.placement!=null)return `<span class="pill out">${ordinal(h.placement)}</span>`;
+      if(h.placement!=null && h.placement>=3 && h.placement<=9)return `<span class="pill jury">JURY · ${ordinal(h.placement)}</span>`;
+      if(h.placement!=null)return `<span class="pill out">PRE-JURY · ${ordinal(h.placement)}</span>`;
       if(h.juryMember)return `<span class="pill jury">JURY</span>`;
+      if(h.evicted)return `<span class="pill out">PRE-JURY</span>`;
       return `<span class="pill out">EVICTED</span>`;
     }
     if(view?.currentHOH===h.id)return `<span class="pill hoh">HOH</span>`;
