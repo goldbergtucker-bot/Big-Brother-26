@@ -16,7 +16,7 @@
 
   function snapshot(s){return {
     phase:s.phase,week:s.week,currentHOH:s.currentHOH,originalHOH:s.originalHOH||null,
-    nominees:(s.nominees||[]).slice(),intendedTarget:s.intendedTarget||null,targetHistory:(s.targetHistory||[]).slice(),
+    nominees:(s.nominees||[]).slice(),intendedTarget:s.intendedTarget||null,intendedTargetId:s.intendedTargetId||null,targetHistory:(s.targetHistory||[]).slice(),
     povPlayers:(s.povPlayers||[]).slice(),vetoWinners:(s.vetoWinners||[]).slice(),evictionVotes:(s.evictionVotes||[]).slice(),
     evicted:(s.evicted||[]).slice(),jury:(s.jury||[]).slice(),
     bb20Twists:JSON.parse(JSON.stringify(s.bb20Twists||{})),
@@ -31,6 +31,9 @@
     d.participants=ids(e.participants||d.participants);d.nomineeIds=ids(e.nomineeIds||d.nomineeIds||s.nominees);
     d.povPlayers=ids(e.povPlayers||d.povPlayers||s.povPlayers);
     d.winnerId=e.winnerId||d.winnerId||null;d.hohId=e.hohId||d.hohId||s.currentHOH||null;d.evictedId=e.evictedId||d.evictedId||null;
+    d.intendedTarget=e.intendedTarget??d.intendedTarget??s.intendedTarget??null;d.intendedTargetId=e.intendedTargetId??d.intendedTargetId??s.intendedTargetId??null;
+    d.groups=e.groups||d.groups||null;d.groupIndex=e.groupIndex??d.groupIndex??null;d.yesIds=ids(e.yesIds||d.yesIds);d.noIds=ids(e.noIds||d.noIds);
+    d.backdoorTargetId=e.backdoorTargetId??d.backdoorTargetId??s.backdoorTargetId??null;
     if(e.type==="veto-ceremony"){d.vetoUsed=!!(e.vetoUsed??d.vetoUsed);d.finalNomineeIds=ids(e.finalNomineeIds||d.finalNomineeIds||s.nominees);}
     if(e.type==="eviction-voting"){d.votes=(s.evictionVotes||[]).map(v=>({...v}));d.voterIds=d.votes.map(v=>v.voterId);}
     if(e.type==="eviction"){d.voteCounts={...(e.voteCounts||{})};d.tieBreakVoteId=e.tieBreakVoteId||null;d.tieBreakEvictedId=e.tieBreakEvictedId||null;d.evictedVoteCount=Number(e.evictedVoteCount||0);d.stayVoteCount=Number(e.stayVoteCount||0);}
@@ -717,7 +720,7 @@
     hg(s,winnerId).placement=1;hg(s,runnerId).placement=2;hg(s,winnerId).active=false;hg(s,runnerId).active=false;
     const eliminationOrder=(s._permanentEvictionOrder||[]).filter(id=>id!==winnerId&&id!==runnerId);
     eliminationOrder.slice().reverse().forEach((id,index)=>{const h=hg(s,id);if(h)h.placement=index+3;});
-    s.houseguests.forEach(h=>{if(h.placement>=3)h.juryMember=true;});
+    s.houseguests.forEach(h=>{h.juryMember=Number.isInteger(h.placement)&&h.placement>=3&&h.placement<=9;});
     const afpCandidates=s.houseguests.slice(),scores=afpCandidates.map(h=>{const avg=afpCandidates.filter(x=>x.id!==h.id).reduce((sum,o)=>sum+relationshipScore(s,h,o),0)/15;return{id:h.id,score:(h.ratings.social||50)*.45+(h.ratings.general||50)*.2+avg*.2+Math.random()*15};}).sort((a,b)=>b.score-a.score);
     const afpId=scores[0]?.id||winnerId,raw={};scores.forEach(x=>raw[x.id]=Math.max(.5,x.score));const total=Object.values(raw).reduce((a,b)=>a+b,0),afpVotes={};Object.keys(raw).forEach(id=>afpVotes[id]=Math.max(1,Math.round(raw[id]/total*100000)));const vt=Object.values(afpVotes).reduce((a,b)=>a+b,0);afpVotes[afpId]+=(100000-vt);
     s.finale={winnerId,runnerUpId:runnerId,thirdPlaceId:third.id,finalHohId:finalHoh.id,votes:tally,jurySize:jurors.length,prize:750000,runnerUpPrize:75000,americasFavoritePrize:50000,americasFavoriteId:afpId,americasFavoriteVotes:afpVotes};
@@ -729,19 +732,37 @@
   function simulateBB26Season(s,config){
     ensureState(s);s.history=[];s.jury=[];s.evicted=[];s.evictionVotes=[];s.nominees=[];s.povPlayers=[];s.vetoWinners=[];s.currentHOH=null;s.finale=null;s._priorHohIds=[];s.bb20Twists={};s._permanentEvictionOrder=[];s.season.evictionCount=0;s.season.castSize=s.houseguests.length;
     s.houseguests.forEach(h=>{h.active=true;h.safe=false;h.nominated=false;h.juryMember=false;h.evicted=false;h.placement=null;});
+    s.intendedTarget=null;s.intendedTargetId=null;s.backdoorTargetId=null;s.targetHistory=[];
     randomizeRelationships(s);
-    const active=living(s),shuffled=shuffle(active),first=shuffled.slice(0,8),second=shuffled.slice(8);
-    s.bb20Twists={season26:true,moveInGroups:[first.map(x=>x.id),second.map(x=>x.id)],mascotIds:[],deepfakeHolderId:null,americasVetoHolderId:null,deepfakeUsed:false,americasVetoUsed:false,aiArenaActive:true,jankieWorld:false,aiInstigatorId:null};
-    // Simulate the four premiere Upgrade/Downgrade outcomes. All 16 enter on Day 1.
-    const up1=C().runCompetition(first,{week:1,type:"upgrade-america"}),up2=C().runCompetition(second,{week:1,type:"upgrade-deepfake"});
-    s.bb20Twists.americasVetoHolderId=up1.winner.id;s.bb20Twists.deepfakeHolderId=up2.winner.id;
-    const down1=C().runCompetition(first.filter(x=>x.id!==up1.winner.id),{week:1,type:"downgrade-mascot"});
-    const down2=C().runCompetition(second.filter(x=>x.id!==up2.winner.id),{week:1,type:"downgrade-mascot-2"});
-    s.bb20Twists.mascotIds=[down1.ranking[down1.ranking.length-1]?.id,down2.ranking[down2.ranking.length-1]?.id].filter(Boolean);
-    log(s,{week:1,phase:"premiere",type:"staggered-move-in",title:"Two-Night Premiere — Staggered Move-In",lines:["The first eight houseguests are presented on premiere night one and the remaining eight on night two. All 16 are active in the game from Day 1."]});
-    log(s,{week:1,phase:"premiere",type:"upgrade",winnerId:up1.winner.id,competition:up1,title:"Upgrade — America's Veto",lines:[`${displayName(up1.winner)} wins the America's Veto power, usable during the first four weeks.`]});
-    log(s,{week:1,phase:"premiere",type:"upgrade",winnerId:up2.winner.id,competition:up2,title:"Upgrade — Deepfake HOH",lines:[`${displayName(up2.winner)} wins the Deepfake HOH power, usable during the first four weeks.`]});
-    s.bb20Twists.mascotIds.forEach(id=>log(s,{week:1,phase:"premiere",type:"mascot",winnerId:id,title:"BB Mascot Downgrade",lines:[`${displayName(hg(s,id))} becomes a BB Mascot for Week 1: ineligible for HOH, Veto and the eviction vote, but still eligible to be nominated and compete in AI Arena if nominated.`]}));
+    const active=living(s),moveInGroups=balancedGenderGroups(active,2,8),first=moveInGroups[0],second=moveInGroups[1];
+    s.bb20Twists={season26:true,moveInGroups:moveInGroups.map(g=>g.map(x=>x.id)),mascotIds:[],deepfakeHolderId:null,americasVetoHolderId:null,deepfakeUsed:false,americasVetoUsed:false,aiArenaActive:true,jankieWorld:false,aiInstigatorId:null,ainsleyVote:{}};
+    log(s,{week:1,phase:"premiere",type:"staggered-move-in",groups:s.bb20Twists.moveInGroups,title:"Two-Night Premiere — Staggered Move-In",lines:["The 16 Houseguests enter in two groups of eight across the two-night premiere. Each group contains four men and four women. All 16 are active in the game from Day 1.","BBAI is the season's central twist. AINSLEY — the Artificial Intelligence Network Self Learning Entity — communicates through the Proto Hologram Box in the living room and will change the rules of the game."]});
+    // Each premiere group votes on whether AINSLEY should enter. Yes voters
+    // compete for an Upgrade; No voters compete to avoid the BB Mascot downgrade.
+    const premiereResults=[];
+    for(let groupIndex=0;groupIndex<moveInGroups.length;groupIndex++){
+      const group=moveInGroups[groupIndex];
+      const yes=new Set(group.filter(()=>Math.random()<.5).map(h=>h.id));
+      // Keep both sides large enough to hold a meaningful competition.
+      while(yes.size<2)yes.add(pick(group.filter(h=>!yes.has(h.id))).id);
+      while(group.length-yes.size<2)yes.delete(pick(group.filter(h=>yes.has(h.id))).id);
+      const yesPlayers=group.filter(h=>yes.has(h.id)),noPlayers=group.filter(h=>!yes.has(h.id));
+      const vote={groupIndex:groupIndex+1,groupIds:group.map(h=>h.id),yesIds:yesPlayers.map(h=>h.id),noIds:noPlayers.map(h=>h.id)};
+      s.bb20Twists.ainsleyVote[groupIndex+1]=vote;
+      log(s,{week:1,phase:"premiere",type:"ainsley-vote",participants:group.map(h=>h.id),groupIndex:groupIndex+1,yesIds:vote.yesIds,noIds:vote.noIds,title:`Night 1 — Group ${groupIndex+1} Votes on AINSLEY`,lines:[`Group ${groupIndex+1} votes on whether to allow AINSLEY to enter the game.`,`${yesPlayers.map(displayName).join(", ")} vote YES and compete for an Upgrade power.`,`${noPlayers.map(displayName).join(", ")} vote NO and compete to avoid the Downgrade punishment.`]});
+      const upgradeType=groupIndex===0?"upgrade-america":"upgrade-deepfake";
+      const downgradeType=groupIndex===0?"downgrade-mascot":"downgrade-mascot-2";
+      const upgrade=C().runCompetition(yesPlayers,{week:1,type:upgradeType});
+      const downgrade=C().runCompetition(noPlayers,{week:1,type:downgradeType});
+      const mascotId=downgrade.ranking[downgrade.ranking.length-1]?.id;
+      premiereResults.push({upgrade,downgrade,mascotId,upgradeType});
+      if(groupIndex===0)s.bb20Twists.americasVetoHolderId=upgrade.winner.id;
+      else s.bb20Twists.deepfakeHolderId=upgrade.winner.id;
+      if(mascotId)s.bb20Twists.mascotIds.push(mascotId);
+      log(s,{week:1,phase:"premiere",type:"upgrade",winnerId:upgrade.winner.id,participants:yesPlayers.map(h=>h.id),competition:upgrade,title:`Upgrade — ${groupIndex===0?"America's Veto":"Deepfake HOH"}`,lines:[`${displayName(upgrade.winner)} wins the ${groupIndex===0?"America's Veto":"Deepfake HOH"} power, usable during the first four weeks.`]});
+      log(s,{week:1,phase:"premiere",type:"mascot",winnerId:mascotId,participants:noPlayers.map(h=>h.id),competition:downgrade,title:`Downgrade — BB Mascot (Group ${groupIndex+1})`,lines:[`${displayName(hg(s,mascotId))} finishes last and becomes a BB Mascot for Week 1. Mascots cannot compete in HOH or Veto or vote, but may be nominated and evicted and may compete in AI Arena if nominated.`]});
+    }
+
     function nomineesFor(hoh,count,exclude=[]){
       const pool=living(s).filter(p=>p.id!==hoh.id&&!exclude.includes(p.id));
       const scored=pool.map(p=>({p,score:(100-relationshipScore(s,hoh,p))*.35+(p.ratings.strategic||50)*.18+(p.ratings.physical||50)*.12+Math.random()*55})).sort((a,b)=>b.score-a.score);
@@ -778,10 +799,15 @@
         if(jankie)log(s,{week,phase:s.phase,type:"jankie-nominations",participants:noms.map(x=>x.id),title:"JANKIE World — Bottle Ring Nomination Game",lines:[`${displayName(hoh)} places red rings on the bottles of the three nominees.`]});
       }
       s.nominees=noms.map(x=>x.id);noms.forEach(x=>x.nominated=true);
-      log(s,{week,phase:s.phase,type:"nominations",participants:s.nominees.slice(),title:"Nomination Ceremony",lines:[`The nominees are ${noms.map(displayName).join(", ")}.`]});
-      // Veto players: HOH, nominees, and two eligible random houseguests; mascots cannot play in Week 1.
+      const intended=noms.slice().sort((a,b)=>relationshipScore(s,hoh,a)-relationshipScore(s,hoh,b))[0]||null;
+      s.intendedTarget=intended?displayName(intended):null;s.intendedTargetId=intended?.id||null;s.backdoorTargetId=null;
+      log(s,{week,phase:s.phase,type:"nominations",hohId:hoh.id,nomineeIds:s.nominees.slice(),intendedTarget:s.intendedTarget,intendedTargetId:s.intendedTargetId,participants:s.nominees.slice(),title:"Nomination Ceremony",lines:[`The nominees are ${noms.map(displayName).join(", ")}.`,intended?`${displayName(hoh)}'s intended target is ${displayName(intended)}.`:"The HOH has not identified a primary target."]});
+      // Veto players: HOH, nominees, and eligible random houseguests; Week 1 mascots cannot play.
+      s.povPlayers=[];
       const vetoPool=shuffle(living(s).filter(x=>!mascots.includes(x.id)&&!s.nominees.includes(x.id)&&x.id!==hoh.id)).slice(0,Math.max(0,6-noms.length));
       const povPlayers=[hoh,...noms.filter(x=>!mascots.includes(x.id)),...vetoPool].filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i).slice(0,6);
+      s.povPlayers=povPlayers.map(x=>x.id);
+      log(s,{week,phase:s.phase,type:"pov-players",hohId:hoh.id,nomineeIds:s.nominees.slice(),povPlayers:s.povPlayers.slice(),participants:s.povPlayers.slice(),title:"Power of Veto Players",lines:[`${povPlayers.map(displayName).join(", ")} have been selected to compete for the Power of Veto.`]});
       const povComp=C().runCompetition(povPlayers,{week,type:round===2?"pov-double":"pov"});
       const povWinner=povComp.winner;s.vetoWinners=[povWinner.id];
       log(s,{week,phase:s.phase,type:"veto",winnerId:povWinner.id,participants:povPlayers.map(x=>x.id),competition:povComp,title:`Power of Veto — ${povComp.label}`,lines:[`${displayName(povWinner)} wins the Power of Veto.`]});
