@@ -1,3 +1,4 @@
+[README.md](https://github.com/user-attachments/files/34381777/README.md)
 [README.md](https://github.com/user-attachments/files/34237444/README.md)
 # Big-Brother-26
 Big Brother 26 simulator
@@ -15,7 +16,7 @@ A custom-cast, BrantSteele-style simulator based on the U.S. Big Brother 26 seas
 - AI Instigator revealed in Week 6.
 - Week 9 JANKIE World and conditional second Veto.
 - Week 10 double eviction and Evil AINSLEY framing.
-- Seven-person jury (10th through 4th place).
+- Seven-person jury (9th through 3rd place; 3rd place joins last).
 - BB26 Final HOH competitions: Sever the Source, Cerebral Shutdown, Data Destruction.
 
 ## Files
