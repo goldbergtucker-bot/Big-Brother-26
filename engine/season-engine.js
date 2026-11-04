@@ -817,34 +817,38 @@
         if(secondPlace){s.bb20Twists.jankieVetoHolderId=secondPlace;log(s,{week,phase:s.phase,type:"jankie-veto-earned",winnerId:secondPlace,title:"JANKIE Power of Veto Earned",lines:[`${displayName(hg(s,secondPlace))} finishes second and may claim a second Veto by winning JANKIE's carnival game at the Veto meeting.`]});}
       }
       let used=false;
+      const nomineesBeforePOV=s.nominees.slice();
       if(s.nominees.includes(povWinner.id)||Math.random()<.18){
         const saved=s.nominees.includes(povWinner.id)?povWinner:pick(s.nominees.map(id=>hg(s,id)).filter(Boolean));
-        if(saved){s.nominees=s.nominees.filter(id=>id!==saved.id);saved.nominated=false;saved.safe=true;used=true;
-          let replacement;
-          const america=s.bb20Twists.americasVetoHolderId;
-          if(week<=4&&!s.bb20Twists.americasVetoUsed&&america===povWinner.id&&Math.random()<.8){
-            replacement=pick(living(s).filter(x=>x.id!==hoh.id&&x.id!==povWinner.id&&x.id!==saved.id&&!s.nominees.includes(x.id)));
-            s.bb20Twists.americasVetoUsed=true;
-            log(s,{week,phase:s.phase,type:"americas-veto",winnerId:povWinner.id,title:"America's Veto Used",lines:[`${displayName(povWinner)} uses America's Veto. America selects ${displayName(replacement)} as the replacement nominee.`]});
-          }else {
-            const deepfakeController=s.bb20Twists.deepfakeActivatedWeek===week?hg(s,s.bb20Twists.deepfakeHolderId):null;
-            replacement=nomineesFor(deepfakeController||hoh,1,[...s.nominees,povWinner.id,saved.id])[0];
-          }
-          if(replacement){s.nominees.push(replacement.id);replacement.nominated=true;log(s,{week,phase:s.phase,type:"veto-used",winnerId:povWinner.id,evictedId:saved.id,participants:[replacement.id],title:"Veto Meeting",lines:[`${displayName(povWinner)} saves ${displayName(saved)}. ${displayName(replacement)} is named as the replacement nominee.`]});}
+        if(saved){
+          s.nominees=s.nominees.filter(id=>id!==saved.id);saved.nominated=false;saved.safe=true;used=true;
+          const deepfakeController=s.bb20Twists.deepfakeActivatedWeek===week?hg(s,s.bb20Twists.deepfakeHolderId):null;
+          const replacement=nomineesFor(deepfakeController||hoh,1,[...s.nominees,povWinner.id,saved.id])[0];
+          if(replacement){s.nominees.push(replacement.id);replacement.nominated=true;}
+          log(s,{week,phase:s.phase,type:"veto-used",winnerId:povWinner.id,evictedId:saved.id,participants:replacement?[replacement.id]:[],title:"Veto Meeting",lines:[`${displayName(povWinner)} saves ${displayName(saved)}.${replacement?` ${displayName(replacement)} is named as the replacement nominee.`:""}`]});
         }
       }
-      // America's Veto is an independent power, not the regular Veto. Its holder
-      // may activate it during Weeks 1–4; America selects the replacement nominee.
+      // America's Veto is a separate self-save power. If its holder is still
+      // nominated after the regular Veto ceremony (including as a replacement),
+      // they automatically use it on themselves during Weeks 1–4. America picks
+      // the replacement; the HOH, regular POV holder and saved nominee are barred.
       const americaId=s.bb20Twists.americasVetoHolderId,americaHolder=hg(s,americaId);
-      if(week<=4&&!s.bb20Twists.americasVetoUsed&&americaHolder?.active&&Math.random()<.24&&s.nominees.length>=2){
-        const saved=americaHolder.nominated?americaHolder:pick(s.nominees.map(id=>hg(s,id)).filter(Boolean));
-        if(saved&&saved.id!==hoh.id&&saved.id!==povWinner.id){
+      let americasVetoUsedThisWeek=false;
+      if(week<=4&&!s.bb20Twists.americasVetoUsed&&americaHolder?.active&&s.nominees.includes(americaHolder.id)){
+        const saved=americaHolder;
+        const protectedIds=new Set([hoh.id,povWinner.id,saved.id]);
+        const americaPool=living(s).filter(x=>!protectedIds.has(x.id)&&!s.nominees.includes(x.id)&&!x.safe&&x.active);
+        const replacement=pick(americaPool);
+        if(replacement){
           s.nominees=s.nominees.filter(id=>id!==saved.id);saved.nominated=false;saved.safe=true;
-          const replacement=pick(living(s).filter(x=>x.id!==hoh.id&&x.id!==povWinner.id&&x.id!==saved.id&&!s.nominees.includes(x.id)));
-          if(replacement){s.nominees.push(replacement.id);replacement.nominated=true;s.bb20Twists.americasVetoUsed=true;
-            log(s,{week,phase:s.phase,type:"americas-veto",winnerId:americaHolder.id,evictedId:saved.id,participants:[replacement.id],title:"America's Veto Activated",lines:[`${displayName(americaHolder)} uses America's Veto to save ${displayName(saved)}. America selects ${displayName(replacement)} as the replacement nominee. The HOH, Veto holder and saved nominee are protected from renomination.`]});}
+          s.nominees.push(replacement.id);replacement.nominated=true;
+          s.bb20Twists.americasVetoUsed=true;americasVetoUsedThisWeek=true;
+          log(s,{week,phase:s.phase,type:"americas-veto",winnerId:saved.id,evictedId:saved.id,participants:[replacement.id],title:"America's Veto Used",lines:[`${displayName(saved)} uses America's Veto on themselves and is removed from the block. America selects ${displayName(replacement)} as the replacement nominee. ${displayName(hoh)} (HOH), ${displayName(povWinner)} (regular POV holder), and ${displayName(saved)} are protected from renomination. The replacement is revealed on eviction night.`]});
         }
       }
+      // Always publish a Veto Ceremony event, whether the regular Veto was used
+      // or not. This keeps the weekly feed and ceremony history complete.
+      log(s,{week,phase:s.phase,type:"veto-ceremony",hohId:hoh.id,winnerId:povWinner.id,nomineeIds:nomineesBeforePOV,finalNomineeIds:s.nominees.slice(),vetoUsed:used,title:"Veto Ceremony",lines:[used?`${displayName(povWinner)} uses the Power of Veto.`:`${displayName(povWinner)} does not use the Power of Veto.`,...(americasVetoUsedThisWeek?[`${displayName(americaHolder)} also uses America's Veto on themselves; America's replacement nominee will be revealed on eviction night.`]:[]),`The nominees after the ceremony are ${s.nominees.map(id=>displayName(hg(s,id))).join(", ")}.`]});
       // JANKIE second veto is conditional on completing the carnival game.
       if(jankie&&s.bb20Twists.jankieVetoHolderId&&Math.random()<.45){
         const holder=hg(s,s.bb20Twists.jankieVetoHolderId),saved=pick(s.nominees.map(id=>hg(s,id)).filter(Boolean));
